@@ -1,0 +1,142 @@
+version: '3'
+
+services:
+  proxy:
+    container_name: nginx-proxy
+    build: ./proxy
+    restart: always
+    ports:
+      - 8888:8888
+      - 8090:8090
+    environment:
+      - TRUST_DOWNSTREAM_PROXY=false
+      - HTTP_PORT=8888
+      - HTTPS_PORT=8090
+    volumes:
+      - certs:/certs:ro
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    networks:
+      - proxy-tier
+
+  redis:
+    image: redis:alpine
+    restart: always
+    networks:
+      - default
+
+  app-db:
+    image: mariadb:10.5
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    restart: always
+    volumes:
+      - app_db:/var/lib/mysql
+    environment:
+      - MARIADB_AUTO_UPGRADE=1
+      - MARIADB_DISABLE_UPGRADE_BACKUP=1
+    env_file:
+      - env/app_db.env
+    networks:
+      - app-tier
+
+  app:
+    container_name: app-server
+    image: nextcloud:apache
+    restart: always
+    expose:
+      - 80
+      - 443
+    volumes:
+      - app_root:/var/www/html
+      - app_custom_apps:/var/www/html/custom_apps
+      - app_config:/var/www/html/config
+      - app_data:/var/www/html/data
+    environment:
+      - MYSQL_HOST=app-db
+      - REDIS_HOST=redis
+    env_file:
+      - env/app.env
+      - env/app_db.env
+      - env/app_host.env
+    networks:
+      - proxy-tier
+      - app-tier
+      - default
+    depends_on:
+      - app-db
+      - redis
+
+  app-cron:
+    image: nextcloud:apache
+    restart: always
+    volumes_from:
+      - app
+    environment:
+      - MYSQL_HOST=app-db
+      - REDIS_HOST=redis
+    env_file:
+      - env/app.env
+      - env/app_db.env
+    entrypoint: /cron.sh
+    networks:
+      - app-tier
+    depends_on:
+      - app-db
+      - redis
+
+  document-db:
+    image: mariadb:10.5
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    restart: always
+    volumes:
+      - document_db:/var/lib/mysql
+    environment:
+      - MARIADB_AUTO_UPGRADE=1
+      - MARIADB_DISABLE_UPGRADE_BACKUP=1
+    env_file:
+      - env/document_db.env
+    networks:
+      - document-tier
+
+  document:
+    container_name: document-server
+    image: onlyoffice/documentserver:latest
+    restart: always
+    expose:
+      - 80
+      - 443
+    volumes:
+      - document_data:/var/www/onlyoffice/Data
+      - document_log:/var/log/onlyoffice
+    environment:
+      - JWT_ENABLED=true
+      - DB_TYPE=mariadb
+      - DB_HOST=document-db
+      - REDIS_SERVER_HOST=redis
+    env_file:
+      - env/document.env
+      - env/document_db.env
+    networks:
+      - proxy-tier
+      - document-tier
+      - default
+    depends_on:
+      - document-db
+      - redis
+
+volumes:
+  app_db:
+  app_root:
+  app_custom_apps:
+  app_config:
+  app_data:
+  document_db:
+  document_data:
+  document_log:
+  certs:
+    name: certs
+    external: true
+
+networks:
+  proxy-tier:
+  app-tier:
+  document-tier:

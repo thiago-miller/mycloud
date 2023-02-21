@@ -1,0 +1,9 @@
+location / {
+  proxy_pass_header Server;
+  proxy_pass http://app-server/;
+}
+
+# Work with onlyoffice.
+location /editors/ {
+  proxy_pass http://document-server/;
+}
