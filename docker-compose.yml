@@ -18,8 +18,18 @@ services:
     networks:
       - proxy-tier
 
+  certbot:
+    build: ./certbot
+    restart: always
+    env_file:
+      - env/certbot.env
+    volumes:
+      - certs:/etc/letsencrypt
+      - certs_var:/var/lib/letsencrypt
+      - ./certbot/certbot-creds.ini:/certbot-creds.ini:ro
+
   redis:
-    image: redis:alpine
+    image: redis:alpine3.17
     restart: always
     networks:
       - default
@@ -40,7 +50,7 @@ services:
 
   app:
     container_name: app-server
-    image: nextcloud:apache
+    image: nextcloud:25.0.4-apache
     restart: always
     expose:
       - 80
@@ -66,7 +76,7 @@ services:
       - redis
 
   app-cron:
-    image: nextcloud:apache
+    image: nextcloud:25.0.4-apache
     restart: always
     volumes_from:
       - app
@@ -99,7 +109,7 @@ services:
 
   document:
     container_name: document-server
-    image: onlyoffice/documentserver:latest
+    image: onlyoffice/documentserver:7.3
     restart: always
     expose:
       - 80
@@ -133,8 +143,7 @@ volumes:
   document_data:
   document_log:
   certs:
-    name: certs
-    external: true
+  certs_var:
 
 networks:
   proxy-tier:
